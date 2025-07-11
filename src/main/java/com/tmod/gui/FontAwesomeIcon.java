@@ -1,6 +1,8 @@
+/**
+ * @author: Era (Sou1ence)
+ */
+
 package com.tmod.gui;
-
-
 
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
@@ -91,9 +93,19 @@ public class FontAwesomeIcon {
         ICON_MAP.put("CLOSE", "\uf00d");
         ICON_MAP.put("FILE_UPLOAD", "\uf574");
         ICON_MAP.put("ARROW_LEFT", "\u2190");
+        ICON_MAP.put("ARROW_RIGHT", "\u2192");
         ICON_MAP.put("TRASH", "\uf1f8");
         ICON_MAP.put("FILE_LIST", "\uf022");
 
+        ICON_MAP.put("CHECK_CIRCLE", "\uf058");
+        ICON_MAP.put("GAMEPAD", "\uf11b");
+
+        // Browser icons
+        ICON_MAP.put("SPINNER", "\uf110");
+        ICON_MAP.put("BROWSER", "\uf6dc");
+        ICON_MAP.put("FILTER", "\uf0b0");
+        ICON_MAP.put("SORT", "\uf0dc");
+        ICON_MAP.put("EXCLAMATION_TRIANGLE", "\uf071");
     }
 
     /**

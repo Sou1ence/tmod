@@ -1,5 +1,5 @@
 /**
- * @author: Era
+ * @author: Era (Sou1ence)
  */
 
 package com.tmod.gui;
@@ -13,13 +13,16 @@ import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Paint;
 import javafx.scene.text.Text;
 import javafx.stage.DirectoryChooser;
+import javafx.stage.Modality;
 import javafx.stage.Stage;
 import java.io.File;
 import java.time.Duration;
@@ -50,6 +53,7 @@ public class TModGui extends Application {
 
     // UI Comps
     private Button addBtn, removeBtn, installBtn, refreshBtn;
+    private Stage primaryStage;
 
     /**
      * Entry point for the GUI version of tmod
@@ -61,6 +65,7 @@ public class TModGui extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        this.primaryStage = primaryStage;
         primaryStage.setTitle("TMod Manager");
 
         primaryStage.setMinWidth(800);
@@ -83,16 +88,23 @@ public class TModGui extends Application {
         primaryStage.setScene(scene);
         primaryStage.show();
 
-        Platform.runLater(() ->
+        Platform.runLater(() -> {
                 TitleBarCustomizer.applyTheme(primaryStage,
                       "#3a3a38",
                         "#f9f8f4",
                       "#5a5a58"
-                ));
+                );
 
-        // Initialize data
-        refreshModsList();
-        updateModCount();
+                // WELCOME WIZARD needs checking
+//                if (FRW_welcome.needsInitialization()) {
+//                    showFirstRunWizard(primaryStage);
+//                } else {
+//                    // Initialize data
+//                    refreshModsList();
+//                    updateModCount();
+//                }
+            FRW_welcome.show(primaryStage);
+        });
     }
 
     /**
@@ -146,18 +158,20 @@ public class TModGui extends Application {
         removeBtn = createStyledButton("Remove Mod", "remove-button", "TRASH_ALT");
         installBtn = createStyledButton("Install All", "install-button", "DOWNLOAD");
         refreshBtn = createStyledButton("Refresh", "refresh-button", "REFRESH");
+        Button browseBtn = createStyledButton("Mod Browser", "browse-button", "SEARCH");
 
         // Event handlers
         addBtn.setOnAction(e -> onAddMod());
         removeBtn.setOnAction(e -> onRemoveMod(modListView.getSelectionModel().getSelectedItem()));
         installBtn.setOnAction(e -> onInstallMods());
         refreshBtn.setOnAction(e -> refreshModsList());
+        browseBtn.setOnAction(e -> onOpenModBrowser());
 
         // Disable remove button initially
         removeBtn.setDisable(true);
 
         // Create HBoxes for left and right sides
-        HBox leftBox = new HBox(15, addBtn, removeBtn);
+        HBox leftBox = new HBox(15, addBtn, removeBtn, browseBtn);
         leftBox.setAlignment(Pos.CENTER_LEFT); // Align buttons to the left
 
         HBox rightBox = new HBox(15, installBtn, refreshBtn);
@@ -210,6 +224,32 @@ public class TModGui extends Application {
             removeBtn.setDisable(newVal == null || newVal.isBlank());
         });
 
+        // Реализация drag-and-drop для файлов модов
+        modListView.setOnDragOver(event -> {
+            if (event.getGestureSource() != modListView && 
+                    event.getDragboard().hasFiles()) {
+                event.acceptTransferModes(javafx.scene.input.TransferMode.COPY_OR_MOVE);
+            }
+            event.consume();
+        });
+
+        modListView.setOnDragDropped(event -> {
+            javafx.scene.input.Dragboard db = event.getDragboard();
+            boolean success = false;
+
+            if (db.hasFiles()) {
+                success = true;
+                for (File file : db.getFiles()) {
+                    if (file.getName().toLowerCase().endsWith(".jar")) {
+                        updateStatus("Adding a mod: " + file.getName());
+                        runCliAndShow("add", file.getAbsolutePath());
+                    }
+                }
+            }
+
+            event.setDropCompleted(success);
+            event.consume();
+        });
 
         modCountLabel.getStyleClass().add("mod-count-label");
 
@@ -396,18 +436,19 @@ public class TModGui extends Application {
     /**
      * Creates a styled button with consistent appearance
      * Structure :
-     *           {BUTOON}
+     *           {BUTTON}
      *              |
      *       {[ICON][ ][TEXT]}
      */
-    private Button createStyledButton(String text, String styleClass, String iconName) {
+    protected static Button createStyledButton(String text, String styleClass, String iconName) {
         Button button = new Button(text);
         button.getStyleClass().addAll("styled-button", styleClass);
-        button.setMinWidth(120);
+//        button.setMinWidth(120);
 
         // Add FontAwesome icon
         if (iconName != null) {
-            Text icon = FontAwesomeIcon.createIcon(iconName, "button-icon", 16);
+            Text icon = FontAwesomeIcon.createIcon(iconName, "button-icon", 13);
+            icon.setFill(Paint.valueOf("#f9f8f4"));
             button.setGraphic(icon);
             button.setContentDisplay(ContentDisplay.LEFT);
             button.setGraphicTextGap(8);
@@ -419,14 +460,99 @@ public class TModGui extends Application {
     /** USER ACTIONS */
 
     private void onAddMod() {
-        DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle("Select Mod Directory");
 
-        File dir = chooser.showDialog(logArea.getScene().getWindow());
-        if (dir == null) return;
+        // Create a dialog with tabs for adding mods (MOD CHOICE DIALOG)
+        TabPane tabPane = new TabPane();
+        tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
-        updateStatus("Adding mod from: " + dir.getName());
-        runCliAndShow("add", dir.getAbsolutePath());
+        // Adding from folder tab
+        Tab folderTab = new Tab("from folder");
+        VBox folderContent = new VBox(10);
+        folderContent.setPadding(new Insets(15));
+
+        Label folderLabel = new Label("Select the folder containing the mod files:");
+        TextField folderField = new TextField();
+        folderField.setEditable(false);
+
+        Button folderBrowseButton = new Button("Browse...");
+        folderBrowseButton.setOnAction(e -> {
+            DirectoryChooser chooser = new DirectoryChooser();
+            chooser.setTitle("Chose the folder with mod files");
+
+            // Use last directory from settings
+            String lastDir = FRW_welcome.getLastDirectory();
+            if (lastDir != null && !lastDir.isEmpty()) {
+                File dir = new File(lastDir);
+                if (dir.exists()) chooser.setInitialDirectory(dir);
+            }
+
+            File dir = chooser.showDialog(tabPane.getScene().getWindow());
+            if (dir != null) {
+                folderField.setText(dir.getAbsolutePath());
+                FRW_welcome.setLastDirectory(dir.getParent());
+            }
+        });
+
+        HBox folderBox = new HBox(10, folderField, folderBrowseButton);
+        HBox.setHgrow(folderField, Priority.ALWAYS);
+
+        Button addFolderButton = new Button("Add mod");
+        addFolderButton.getStyleClass().add("action-button");
+        addFolderButton.setOnAction(e -> {
+            if (folderField.getText().isEmpty()) {
+                showInfoDialog("Issue", "Choose a folder with mod files");
+                return;
+            }
+
+            Stage stage = (Stage) addFolderButton.getScene().getWindow();
+            stage.close();
+
+            updateStatus("Adding mod from: " + folderField.getText());
+            runCliAndShow("add", folderField.getText());
+        });
+
+        folderContent.getChildren().addAll(folderLabel, folderBox, addFolderButton);
+        folderTab.setContent(folderContent);
+
+        // Adding by URL tab
+        Tab urlTab = new Tab("using URL");
+        VBox urlContent = new VBox(10);
+        urlContent.setPadding(new Insets(15));
+
+        Label urlLabel = new Label("Enter the URL of the mod (CurseForge, Modrinth, etc.):");
+        TextField urlField = new TextField();
+
+        Button addUrlButton = new Button("Add mod");
+        addUrlButton.getStyleClass().add("action-button");
+        addUrlButton.setOnAction(e -> {
+            if (urlField.getText().isEmpty()) {
+                showInfoDialog("Issue", "Enter a valid URL for the mod");
+                return;
+            }
+
+            Stage stage = (Stage) addUrlButton.getScene().getWindow();
+            stage.close();
+
+            updateStatus("Adding mod by URL: " + urlField.getText());
+            runCliAndShow("add", "--url", urlField.getText());
+        });
+
+        urlContent.getChildren().addAll(urlLabel, urlField, addUrlButton);
+        urlTab.setContent(urlContent);
+
+        tabPane.getTabs().addAll(folderTab, urlTab);
+
+        Stage dialogStage = new Stage();
+        dialogStage.setTitle("Add mod");
+        dialogStage.initModality(Modality.APPLICATION_MODAL);
+        dialogStage.initOwner(logArea.getScene().getWindow());
+
+        Scene scene = new Scene(tabPane, 500, 250);
+        scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/stylesheet/style.css")).toExternalForm());
+
+        dialogStage.setScene(scene);
+        dialogStage.setResizable(false);
+        dialogStage.showAndWait();
     }
 
     private void onRemoveMod(String modName) {
@@ -533,5 +659,29 @@ public class TModGui extends Application {
         alert.setHeaderText(null);
         alert.setContentText(message);
         alert.showAndWait();
+    }
+
+    /**
+     * Shows wizard for first run config
+     */
+    private void showFirstRunWizard(Stage primaryStage) {
+        boolean success = FRW_welcome.show(primaryStage);
+
+        refreshModsList();
+        updateModCount();
+
+        appendLog("Setup is complete, you are welcome to proceed");
+        updateStatus("ModPack is ready");
+    }
+
+    /**
+     * Opens the mod browser window
+     */
+    private void onOpenModBrowser() {
+        appendLog("Opening mod browser...");
+        updateStatus("Opening mod browser");
+
+        ModBrowser browser = new ModBrowser(primaryStage);
+        browser.show();
     }
 }
